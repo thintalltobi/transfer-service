@@ -1,8 +1,8 @@
 {
-  "name": "nestjs-authentication-and-authorization",
+  "name": "transfer-service",
   "version": "0.0.1",
-  "description": "NestJS authentication and authorization using Bcrypt, JWT & Redis",
-  "author": "Anil Ahir",
+  "description": "Building a transfer service with NestJS, TypeORM, and JWT Authentication",
+  "author": "Badru AbdulRahman",
   "private": false,
   "license": "MIT",
   "scripts": {
