@@ -10,6 +10,8 @@ import databaseConfig from './common/config/database.config';
 import jwtConfig from './common/config/jwt.config';
 import { validate } from './common/validation/env.validation';
 import { DatabaseModule } from './database/database.module';
+import { MerchantBalanceModule } from './merchant-balance/merchant-balance.module';
+import { MerchantModule } from './merchant/merchant.module';
 import { UsersModule } from './users/users.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import redisConfig from './common/config/redis.config';
@@ -26,6 +28,8 @@ import swaggerConfig from './common/config/swagger.config';
     DatabaseModule,
     RedisModule,
     AuthModule,
+    MerchantModule,
+    MerchantBalanceModule,
     UsersModule,
   ],
   controllers: [AppController],

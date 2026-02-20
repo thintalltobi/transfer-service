@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { BcryptService } from './bcrypt.service';
@@ -14,7 +15,7 @@ import jwtConfig from '../common/config/jwt.config';
     JwtModule.registerAsync(jwtConfig.asProvider()),
   ],
   controllers: [AuthController],
-  providers: [AuthService, BcryptService],
+  providers: [AuthService, BcryptService, AuthRepository],
   exports: [JwtModule],
 })
 export class AuthModule {}

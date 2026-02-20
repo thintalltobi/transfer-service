@@ -1,11 +1,10 @@
 import { Test } from '@nestjs/testing';
 import { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Repository } from 'typeorm';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { createMock } from '@golevelup/ts-jest';
-import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { AuthRepository } from '../../../src/auth/auth.repository';
 import { AuthService } from '../../../src/auth/auth.service';
 import { BcryptService } from '../../../src/auth/bcrypt.service';
 import { RedisService } from '../../../src/redis/redis.service';
@@ -19,7 +18,7 @@ describe('AuthService', () => {
   let authService: AuthService;
   let bcryptService: BcryptService;
   let jwtService: JwtService;
-  let userRepository: Repository<User>;
+  let authRepository: AuthRepository;
   let redisService: RedisService;
   let jwtConfiguration: ConfigType<typeof jwtConfig>;
 
@@ -30,10 +29,7 @@ describe('AuthService', () => {
         { provide: BcryptService, useValue: createMock<BcryptService>() },
         { provide: JwtService, useValue: createMock<JwtService>() },
         { provide: RedisService, useValue: createMock<RedisService>() },
-        {
-          provide: getRepositoryToken(User),
-          useClass: Repository,
-        },
+        { provide: AuthRepository, useValue: createMock<AuthRepository>() },
         {
           provide: jwtConfig.KEY,
           useValue: jwtConfig.asProvider(),
@@ -44,7 +40,7 @@ describe('AuthService', () => {
     authService = moduleRef.get<AuthService>(AuthService);
     bcryptService = moduleRef.get<BcryptService>(BcryptService);
     jwtService = moduleRef.get<JwtService>(JwtService);
-    userRepository = moduleRef.get<Repository<User>>(getRepositoryToken(User));
+    authRepository = moduleRef.get<AuthRepository>(AuthRepository);
     redisService = moduleRef.get<RedisService>(RedisService);
     jwtConfiguration = moduleRef.get<ConfigType<typeof jwtConfig>>(
       jwtConfig.KEY,
@@ -66,8 +62,8 @@ describe('AuthService', () => {
     });
 
     it('should create a new user', async () => {
-      const saveSpy = jest
-        .spyOn(userRepository, 'save')
+      const createUserSpy = jest
+        .spyOn(authRepository, 'createUser')
         .mockResolvedValueOnce(user);
       const hashSpy = jest
         .spyOn(bcryptService, 'hash')
@@ -76,31 +72,40 @@ describe('AuthService', () => {
       await authService.signUp(signUpDto);
 
       expect(hashSpy).toHaveBeenCalledWith(signUpDto.password);
-      expect(saveSpy).toHaveBeenCalledWith(user);
+      expect(createUserSpy).toHaveBeenCalledWith(
+        signUpDto.email,
+        'hashed_password',
+      );
     });
 
     it('should throw a ConflictException if a user with the same email already exists', async () => {
-      const saveSpy = jest
-        .spyOn(userRepository, 'save')
+      const createUserSpy = jest
+        .spyOn(authRepository, 'createUser')
         .mockRejectedValueOnce({ code: MysqlErrorCode.UniqueViolation });
 
-      await expect(authService.signUp(signUpDto)).rejects.toThrowError(
+      await expect(authService.signUp(signUpDto)).rejects.toThrow(
         new ConflictException(`User [${signUpDto.email}] already exist`),
       );
 
-      expect(saveSpy).toHaveBeenCalledWith(user);
+      expect(createUserSpy).toHaveBeenCalledWith(
+        signUpDto.email,
+        'hashed_password',
+      );
     });
 
     it('should rethrow any other error that occurs during signup', async () => {
-      const saveSpy = jest
-        .spyOn(userRepository, 'save')
+      const createUserSpy = jest
+        .spyOn(authRepository, 'createUser')
         .mockRejectedValueOnce(new Error('Unexpected error'));
 
-      await expect(authService.signUp(signUpDto)).rejects.toThrowError(
+      await expect(authService.signUp(signUpDto)).rejects.toThrow(
         new Error('Unexpected error'),
       );
 
-      expect(saveSpy).toHaveBeenCalledWith(user);
+      expect(createUserSpy).toHaveBeenCalledWith(
+        signUpDto.email,
+        'hashed_password',
+      );
     });
   });
 
@@ -120,7 +125,7 @@ describe('AuthService', () => {
       const comparedPassword = true;
       const tokenId = expect.any(String);
 
-      jest.spyOn(userRepository, 'findOne').mockResolvedValue(user);
+      jest.spyOn(authRepository, 'findByEmail').mockResolvedValue(user);
       jest.spyOn(bcryptService, 'compare').mockResolvedValue(comparedPassword);
       jest
         .spyOn(authService, 'generateAccessToken')
@@ -129,9 +134,7 @@ describe('AuthService', () => {
       const result = await authService.signIn(signInDto);
 
       expect(result).toEqual({ accessToken: 'accessToken' });
-      expect(userRepository.findOne).toHaveBeenCalledWith({
-        where: { email: signInDto.email },
-      });
+      expect(authRepository.findByEmail).toHaveBeenCalledWith(signInDto.email);
       expect(bcryptService.compare).toHaveBeenCalledWith(
         signInDto.password,
         encryptedPassword,
@@ -143,15 +146,13 @@ describe('AuthService', () => {
         email: 'invalid-email',
         password: 'Pass#123',
       };
-      jest.spyOn(userRepository, 'findOne').mockResolvedValue(undefined);
+      jest.spyOn(authRepository, 'findByEmail').mockResolvedValue(null);
 
       await expect(authService.signIn(signInDto)).rejects.toThrow(
         BadRequestException,
       );
 
-      expect(userRepository.findOne).toHaveBeenCalledWith({
-        where: { email: signInDto.email },
-      });
+      expect(authRepository.findByEmail).toHaveBeenCalledWith(signInDto.email);
     });
 
     it('should throw an error when password is invalid', async () => {
@@ -165,16 +166,14 @@ describe('AuthService', () => {
       user.email = signInDto.email;
       user.password = 'encryptedPassword';
 
-      jest.spyOn(userRepository, 'findOne').mockResolvedValue(user);
+      jest.spyOn(authRepository, 'findByEmail').mockResolvedValue(user);
       jest.spyOn(bcryptService, 'compare').mockResolvedValue(false);
 
       await expect(authService.signIn(signInDto)).rejects.toThrow(
         BadRequestException,
       );
 
-      expect(userRepository.findOne).toHaveBeenCalledWith({
-        where: { email: signInDto.email },
-      });
+      expect(authRepository.findByEmail).toHaveBeenCalledWith(signInDto.email);
       expect(bcryptService.compare).toHaveBeenCalledWith(
         signInDto.password,
         user.password,
